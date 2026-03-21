@@ -1,44 +1,38 @@
+/**
+ * POST /api/wallet/create
+ *
+ * Creates (or loads) the wallet and returns the Ethereum address.
+ * The mnemonic is auto-generated and persisted to .env.local by
+ * initializeWallet() if one does not already exist.
+ *
+ * WDK flow (per docs):
+ *   1. WDK.getRandomSeedPhrase()              ← called inside initializeWallet
+ *   2. new WalletManagerEvm(seedPhrase, cfg)  ← standalone EVM manager
+ *   3. account = await walletManager.getAccount(0)
+ *   4. address = await account.getAddress()
+ */
+
 import { NextResponse } from 'next/server';
 import { initializeWallet } from '@/app/lib/wdk/client';
-import { promises as fs } from 'fs';
-import path from 'path';
 
 export async function POST() {
   try {
-    // Initialize wallet (this will generate a new wallet)
     const { address, seedPhrase } = await initializeWallet();
-
-    // Save mnemonic to .env.local for persistence
-    const envPath = path.join(process.cwd(), '.env.local');
-    let envContent = '';
-    
-    try {
-      envContent = await fs.readFile(envPath, 'utf8');
-    } catch (error) {
-      // File doesn't exist, will create new
-      console.log('Creating new .env.local file');
-    }
-
-    // Save mnemonic if not already present
-    if (!envContent.includes('WALLET_MNEMONIC=')) {
-      envContent += `\nWALLET_MNEMONIC=${seedPhrase}`;
-      await fs.writeFile(envPath, envContent);
-    }
 
     return NextResponse.json({
       success: true,
       address,
-      message: 'Wallet created successfully'
+      // Expose just the first word as a hint so the UI can confirm a new wallet
+      // was generated — never send the full seed phrase to the browser in production.
+      hint: `Seed phrase starts with: "${seedPhrase.split(' ')[0]} ..."`,
+      message: 'Wallet ready. Seed phrase saved to .env.local.',
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-    console.error('Wallet creation error:', errorMessage);
-    
+    console.error('[/api/wallet/create] Error:', errorMessage);
+
     return NextResponse.json(
-      { 
-        success: false, 
-        error: errorMessage 
-      },
+      { success: false, error: errorMessage },
       { status: 500 }
     );
   }

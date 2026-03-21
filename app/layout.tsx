@@ -10,7 +10,7 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: 'Subscription Samurai - Autonomous Payment Agent',
-  description: 'AI-powered subscription management using Tether WDK',
+  description: 'Agent-powered subscription management using Tether WDK',
 };
 
 export default function RootLayout({

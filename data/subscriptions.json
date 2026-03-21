@@ -1,0 +1,16 @@
+{
+  "subscriptions": [
+    {
+      "recipient": "0xab2E06a5dd2f751Df0d2D2448788D8cBd06ac149",
+      "amount": 0.1,
+      "frequency": "daily",
+      "active": true
+    },
+    {
+      "recipient": "0xab2E06a5dd2f751Df0d2D2448788D8cBd06ac149",
+      "amount": 0.8,
+      "frequency": "weekly",
+      "active": true
+    }
+  ]
+}
