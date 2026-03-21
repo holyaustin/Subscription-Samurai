@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:all": "concurrently --names \"next,agent\" --prefix-colors \"blue,green\" \"next dev\" \"node agent-scripts/subscription-agent.js\"",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",

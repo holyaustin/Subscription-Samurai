@@ -76,7 +76,7 @@ export default function TransactionHistory() {
           {transactions.map((tx, index) => (
             <div
               key={index}
-              className="border border-gray-100 rounded-lg p-3 hover:bg-gray-50 transition-colors"
+              className="border border-gray-100 rounded-lg p-3 hover:bg-gray-50 transition-colors text-gray-800"
             >
               <div className="flex items-start gap-3">
                 <div className="text-xl">{getStatusIcon(tx.type)}</div>

@@ -34,7 +34,7 @@ export default function Dashboard() {
       } else {
         setAgentError(data.error || 'Failed to start agent');
       }
-    } catch (err) {
+    } catch {
       setAgentError('Could not reach the server.');
     } finally {
       setStarting(false);
@@ -51,7 +51,6 @@ export default function Dashboard() {
     }
   };
 
-  // Human-readable label for each frequency
   const frequencyLabel: Record<Frequency, string> = {
     every_minute:     '1 min',
     every_5_minutes:  '5 min',
@@ -73,7 +72,7 @@ export default function Dashboard() {
         {/* Header */}
         <div className="text-center mb-8 lg:mb-12 animate-slide-up">
           <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-3">
-            <span className="text-gradient">🤖 The Subscription Samurai</span>
+            <span className="">🤖 The Subscription Samurai</span>
           </h1>
           <p className="text-gray-600 dark:text-gray-300 text-sm sm:text-base max-w-2xl mx-auto">
             Autonomous recurring payments powered by Tether WDK
@@ -89,16 +88,15 @@ export default function Dashboard() {
           }`}>
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
 
-              {/* Status */}
               <div className="flex items-center gap-3">
                 <div className={`status-dot ${agentRunning ? 'status-dot-active' : 'status-dot-inactive'}`} />
                 <div>
                   <p className="font-semibold text-gray-900 dark:text-white">
-                    Agent Status: {agentRunning ? '🟢 Running' : '⚫ Stopped'}
+                    Agent Status: {agentRunning ? 'Running' : 'Stopped'}
                   </p>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                     {agentRunning
-                      ? 'Monitoring and processing subscriptions'
+                      ? 'Actively monitoring and processing subscriptions'
                       : noSubscriptions
                         ? '👇 Add a subscription below, then start the agent'
                         : `${subscriptions.length} subscription${subscriptions.length > 1 ? 's' : ''} queued — ready to start`}
@@ -106,7 +104,6 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Start / Stop */}
               <div className="flex flex-col gap-2 w-full sm:w-auto">
                 {!agentRunning ? (
                   <>
@@ -142,30 +139,27 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Agent error */}
             {agentError && (
-              <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200
-                              dark:border-red-800 rounded-lg">
+              <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
                 <p className="text-sm text-red-600 dark:text-red-400">❌ {agentError}</p>
               </div>
             )}
 
-            {/* Subscription badges */}
             {subscriptions.length > 0 && (
               <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                 <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
-                  Queued ({subscriptions.length}):
+                  Active Subscriptions:
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {subscriptions.map((sub, index) => (
                     <div key={index} className="badge text-xs flex items-center gap-1.5">
                       <span>
-                        {sub.amount} {sub.token} · {frequencyLabel[sub.frequency]} · {sub.recipient.slice(0, 6)}…{sub.recipient.slice(-4)}
+                        {sub.amount} USDT · {frequencyLabel[sub.frequency]} · {sub.recipient.slice(0, 6)}...
                       </span>
                       {!agentRunning && (
                         <button
                           onClick={() => removeSubscription(index)}
-                          className="text-gray-400 hover:text-red-500 transition-colors leading-none ml-0.5"
+                          className="text-gray-400 hover:text-red-500 transition-colors ml-0.5 leading-none"
                           title="Remove"
                         >
                           ×
@@ -190,21 +184,19 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Quick Start Guide */}
-        <div className="mt-8 card bg-gradient-to-r from-yellow-50 to-amber-50
-                        dark:from-yellow-900/10 dark:to-amber-900/10
-                        border-yellow-200 dark:border-yellow-800">
+        {/* Quick Demo Guide */}
+        <div className="mt-8 card bg-gradient-to-r from-yellow-50 to-amber-50 dark:from-yellow-900/10 dark:to-amber-900/10 border-yellow-200 dark:border-yellow-800">
           <div className="p-4 sm:p-6">
             <h3 className="font-semibold text-yellow-800 dark:text-yellow-200 mb-3 flex items-center gap-2">
-              <span>🎯</span> Quick Start — Testing Payments
+              <span>🎯</span> Quick Demo Guide
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-sm">
               {[
-                { step: '1', text: 'Create & fund wallet' },
-                { step: '2', text: 'Set AGENT_CHECK_INTERVAL=* * * * * in .env.local' },
-                { step: '3', text: 'Add subscription (every_minute frequency)' },
-                { step: '4', text: 'Run: npm run agent in a second terminal' },
-                { step: '5', text: 'Watch Transaction History update!' },
+                { step: '1', text: 'Create wallet' },
+                { step: '2', text: 'Get test USDT' },
+                { step: '3', text: 'Add subscriptions' },
+                { step: '4', text: 'Start agent' },
+                { step: '5', text: 'Watch it work!' },
               ].map(({ step, text }) => (
                 <div key={step} className="flex items-start gap-2">
                   <span className="text-yellow-600 dark:text-yellow-400 font-bold shrink-0">{step}.</span>

@@ -1,79 +1,57 @@
+/**
+ * app/api/agent/start/route.ts
+ *
+ * POST  — saves subscriptions + marks agent as active
+ * DELETE — marks agent as inactive
+ *
+ * On Vercel: the actual payments run via /api/agent/cron (Vercel Cron Job).
+ *            This route just saves the subscription config and active flag.
+ *
+ * Locally:   same behaviour. Use `npm run dev:all` to also run the
+ *            standalone agent process, OR just use the cron route manually
+ *            at http://localhost:3000/api/agent/cron
+ */
+
 import { NextRequest, NextResponse } from 'next/server';
-import { spawn, ChildProcess } from 'child_process';
-import path from 'path';
 import { promises as fs } from 'fs';
+import path from 'path';
 
-let agentProcess: ChildProcess | null = null;
+const DATA_DIR    = path.join(process.cwd(), 'data');
+const CONFIG_FILE = path.join(DATA_DIR, 'subscriptions.json');
+const STATE_FILE  = path.join(DATA_DIR, 'agent-state.json');
 
+async function ensureDataDir() {
+  await fs.mkdir(DATA_DIR, { recursive: true });
+}
+
+// POST — start agent (save subscriptions + set active)
 export async function POST(request: NextRequest) {
   try {
-    if (agentProcess) {
-      return NextResponse.json({
-        success: true,
-        message: 'Agent already running'
-      });
-    }
+    await ensureDataDir();
 
-    const body = await request.json();
-    const { subscriptions } = body;
+    const { subscriptions } = await request.json();
 
-    // Save subscriptions to config file
-    const configPath = path.join(process.cwd(), 'data', 'subscriptions.json');
-    
-    // Ensure data directory exists
-    await fs.mkdir(path.join(process.cwd(), 'data'), { recursive: true });
-    
-    // Save subscriptions
-    await fs.writeFile(configPath, JSON.stringify({ subscriptions }, null, 2));
+    // Save subscriptions config
+    await fs.writeFile(CONFIG_FILE, JSON.stringify({ subscriptions }, null, 2));
 
-    // Start agent process
-    const agentScriptPath = path.join(process.cwd(), 'agent-scripts', 'subscription-agent.js');
-    
-    agentProcess = spawn('node', [agentScriptPath], {
-      detached: true,
-      stdio: 'pipe'
-    });
+    // Save agent active state
+    await fs.writeFile(STATE_FILE, JSON.stringify({ active: true, startedAt: new Date().toISOString() }, null, 2));
 
-    // Type the data parameter properly
-    agentProcess.stdout?.on('data', (data: Buffer) => {
-      console.log(`Agent stdout: ${data.toString()}`);
-    });
-
-    agentProcess.stderr?.on('data', (data: Buffer) => {
-      console.error(`Agent stderr: ${data.toString()}`);
-    });
-
-    return NextResponse.json({
-      success: true,
-      message: 'Agent started successfully'
-    });
+    return NextResponse.json({ success: true, message: 'Agent started — subscriptions saved' });
   } catch (error) {
-    // Properly handle unknown error type
-    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-    return NextResponse.json(
-      { success: false, error: errorMessage },
-      { status: 500 }
-    );
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ success: false, error: msg }, { status: 500 });
   }
 }
 
+// DELETE — stop agent
 export async function DELETE() {
   try {
-    if (agentProcess) {
-      // Kill the process gracefully
-      agentProcess.kill('SIGTERM');
-      agentProcess = null;
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: 'Agent stopped'
-    });
+    await ensureDataDir();
+    await fs.writeFile(STATE_FILE, JSON.stringify({ active: false, stoppedAt: new Date().toISOString() }, null, 2));
+    return NextResponse.json({ success: true, message: 'Agent stopped' });
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-    return NextResponse.json(
-      { success: false, error: errorMessage },
-      { status: 500 }
-    );
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ success: false, error: msg }, { status: 500 });
   }
 }

@@ -1,0 +1,66 @@
+{
+  "transactions": [
+    {
+      "type": "success",
+      "txId": "0xd6ce66b31ad62ebf5df4455fcfed0b5bdb083131cfe00069ac6b70f2fb457a0b",
+      "recipient": "0xab2E06a5dd2f751Df0d2D2448788D8cBd06ac149",
+      "amount": 0.1,
+      "frequency": "daily",
+      "feeWei": "44164745944",
+      "timestamp": "2026-03-21T20:57:00.835Z"
+    },
+    {
+      "type": "success",
+      "txId": "0x93bb4aabfd4c1b324be31e088db9029df58d067a2f193fca93235ba79c4a0510",
+      "recipient": "0xab2E06a5dd2f751Df0d2D2448788D8cBd06ac149",
+      "amount": 0.8,
+      "frequency": "weekly",
+      "feeWei": "44150853918",
+      "timestamp": "2026-03-21T20:56:02.633Z"
+    },
+    {
+      "type": "error",
+      "recipient": "0xab2E06a5dd2f751Df0d2D2448788D8cBd06ac149",
+      "amount": 0.1,
+      "frequency": "daily",
+      "error": "replacement fee too low (transaction=\"0x02f8b083aa36a703830f4240830f451282ac6494d077a400968890eacc75cdc901f0356c943e4fdb80b844a9059cbb000000000000000000000000ab2e06a5dd2f751df0d2d2448788d8cbd06ac14900000000000000000000000000000000000000000000000000000000000186a0c001a0eb1de9e26e9924cf325aabb342e8d7c3a4426f67061295649d2f5d9143b17550a052725dbda1e3255cb277ab66f4d91c735dbe126a73b14b41f93b0e0cb2c3229a\", info={ \"error\": { \"code\": -32000, \"message\": \"replacement transaction underpriced\" } }, code=REPLACEMENT_UNDERPRICED, version=6.14.4)",
+      "timestamp": "2026-03-21T20:56:00.829Z"
+    },
+    {
+      "type": "success",
+      "txId": "0x12572f5f734ff6c92aa924662401583fda469fdf9c58e90d0c1c6524731aede2",
+      "recipient": "0xab2E06a5dd2f751Df0d2D2448788D8cBd06ac149",
+      "amount": 0.8,
+      "frequency": "weekly",
+      "feeWei": "44150853918",
+      "timestamp": "2026-03-21T20:56:00.649Z"
+    },
+    {
+      "type": "success",
+      "txId": "0xdc06c7ad22b48a1692372effd9e7bf3ab6a91e795f0fb1cc1d3137bc8412de44",
+      "recipient": "0xab2E06a5dd2f751Df0d2D2448788D8cBd06ac149",
+      "amount": 0.1,
+      "frequency": "daily",
+      "feeWei": "44163951568",
+      "timestamp": "2026-03-21T20:55:58.684Z"
+    },
+    {
+      "type": "success",
+      "txId": "0xeb4dc33b22fe424c6ddf576c1ffb8c1d33353c4bca29d689db89beb824dbebb6",
+      "recipient": "0xab2E06a5dd2f751Df0d2D2448788D8cBd06ac149",
+      "amount": 0.8,
+      "frequency": "weekly",
+      "feeWei": "44151559822",
+      "timestamp": "2026-03-21T20:55:27.928Z"
+    },
+    {
+      "type": "success",
+      "txId": "0x4504bccd55a5bd7b018ed8fde27df80ec59b7f520cecf5a981fc7208c84b7225",
+      "recipient": "0xab2E06a5dd2f751Df0d2D2448788D8cBd06ac149",
+      "amount": 0.1,
+      "frequency": "daily",
+      "feeWei": "44164569416",
+      "timestamp": "2026-03-21T20:55:26.082Z"
+    }
+  ]
+}
