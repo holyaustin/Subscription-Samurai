@@ -1,39 +1,91 @@
 /**
  * POST /api/wallet/create
  *
- * Creates (or loads) the wallet and returns the Ethereum address.
- * The mnemonic is auto-generated and persisted to .env.local by
- * initializeWallet() if one does not already exist.
- *
- * WDK flow (per docs):
- *   1. WDK.getRandomSeedPhrase()              ← called inside initializeWallet
- *   2. new WalletManagerEvm(seedPhrase, cfg)  ← standalone EVM manager
- *   3. account = await walletManager.getAccount(0)
- *   4. address = await account.getAddress()
+ * Local dev: generates a mnemonic and saves it to .env.local
+ * Vercel:    cannot write files — returns the generated mnemonic so the user
+ *            can copy it into their Vercel environment variables manually.
  */
 
 import { NextResponse } from 'next/server';
-import { initializeWallet } from '@/app/lib/wdk/client';
+import WDK from '@tetherto/wdk';
+import WalletManagerEvm from '@tetherto/wdk-wallet-evm';
+
+const isVercel = !!process.env.VERCEL;
 
 export async function POST() {
   try {
-    const { address, seedPhrase } = await initializeWallet();
+    // If mnemonic already exists, just return the wallet address
+    if (process.env.WALLET_MNEMONIC) {
+      const provider = process.env.RPC_URL || 'https://ethereum-sepolia-public.nodies.app';
+      const wdkInstance = new WDK(process.env.WALLET_MNEMONIC)
+        .registerWallet('ethereum', WalletManagerEvm, { provider });
+      const account = await wdkInstance.getAccount('ethereum', 0);
+      const address = await account.getAddress();
+
+      return NextResponse.json({
+        success: true,
+        address,
+        message: 'Wallet already exists.',
+      });
+    }
+
+    // Generate a new mnemonic
+    const newMnemonic = WDK.getRandomSeedPhrase();
+
+    if (isVercel) {
+      // On Vercel we can't write files — tell the user what to do
+      const provider = process.env.RPC_URL || 'https://ethereum-sepolia-public.nodies.app';
+      const wdkInstance = new WDK(newMnemonic)
+        .registerWallet('ethereum', WalletManagerEvm, { provider });
+      const account = await wdkInstance.getAccount('ethereum', 0);
+      const address = await account.getAddress();
+
+      return NextResponse.json({
+        success: true,
+        address,
+        vercel_action_required: true,
+        instructions: [
+          '1. Copy the WALLET_MNEMONIC value below',
+          '2. Go to Vercel → Your Project → Settings → Environment Variables',
+          '3. Add: WALLET_MNEMONIC = <the value below>',
+          '4. Click Save, then go to Deployments and Redeploy',
+          '5. Your wallet will be ready after redeployment',
+        ],
+        // Safe to return here — user needs this to set the env var
+        // In production you would handle this differently (e.g. encrypt it)
+        WALLET_MNEMONIC: newMnemonic,
+        message: 'Action required: add WALLET_MNEMONIC to Vercel environment variables (see instructions)',
+      });
+    }
+
+    // Local dev: save to .env.local
+    const { promises: fs } = await import('fs');
+    const { join } = await import('path');
+    const envPath = join(process.cwd(), '.env.local');
+    let envContent = '';
+    try { envContent = await fs.readFile(envPath, 'utf8'); } catch { /* ok */ }
+
+    if (!envContent.includes('WALLET_MNEMONIC=')) {
+      const sep = envContent.length > 0 && !envContent.endsWith('\n') ? '\n' : '';
+      await fs.writeFile(envPath, `${envContent}${sep}WALLET_MNEMONIC=${newMnemonic}\n`);
+      process.env.WALLET_MNEMONIC = newMnemonic;
+    }
+
+    const provider = process.env.RPC_URL || 'https://ethereum-sepolia-public.nodies.app';
+    const wdkInstance = new WDK(newMnemonic)
+      .registerWallet('ethereum', WalletManagerEvm, { provider });
+    const account = await wdkInstance.getAccount('ethereum', 0);
+    const address = await account.getAddress();
 
     return NextResponse.json({
       success: true,
       address,
-      // Expose just the first word as a hint so the UI can confirm a new wallet
-      // was generated — never send the full seed phrase to the browser in production.
-      hint: `Seed phrase starts with: "${seedPhrase.split(' ')[0]} ..."`,
-      message: 'Wallet ready. Seed phrase saved to .env.local.',
+      message: 'Wallet created and saved to .env.local. Restart npm run dev to load it.',
     });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-    console.error('[/api/wallet/create] Error:', errorMessage);
 
-    return NextResponse.json(
-      { success: false, error: errorMessage },
-      { status: 500 }
-    );
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[create] Fatal:', msg);
+    return NextResponse.json({ success: false, error: msg }, { status: 500 });
   }
 }

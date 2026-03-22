@@ -1,22 +1,21 @@
 /**
  * app/lib/wdk/client.ts
  *
- * Uses the IDENTICAL pattern as the working /api/wallet/debug route.
+ * Vercel-compatible: reads ONLY from process.env — no filesystem writes.
  *
- * Debug works because it does:
- *   1. const mnemonic = process.env.WALLET_MNEMONIC          ← direct, no async
- *   2. new WDK(mnemonic).registerWallet('ethereum', ...)     ← exact docs pattern
- *   3. await wdkInstance.getAccount('ethereum', 0)
- *   4. await account.getBalance()                            → bigint (wei)
- *   5. await account.getTokenBalance(contractAddr)           → bigint (units)
+ * On Vercel the filesystem is read-only. Writing to .env.local throws a 500.
+ * The mnemonic MUST be set as an environment variable in the Vercel dashboard.
+ *
+ * Locally, if WALLET_MNEMONIC is missing we fall back to reading .env.local
+ * directly (needed when the mnemonic was just generated and the server hasn't
+ * restarted yet).
  */
 
 import WDK from '@tetherto/wdk';
 import WalletManagerEvm from '@tetherto/wdk-wallet-evm';
-import { promises as fs } from 'fs';
-import path from 'path';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// Only import fs in non-Vercel environments
+const isVercel = !!process.env.VERCEL;
 
 export interface WalletInitResult {
   wdk: InstanceType<typeof WDK>;
@@ -32,15 +31,13 @@ export interface BalanceResult {
   };
 }
 
-// ─── Env helpers — read process.env directly, same as debug route ─────────────
+// ── Env helpers ───────────────────────────────────────────────────────────────
 
 function getRpcUrl(): string {
   return process.env.RPC_URL || 'https://ethereum-sepolia-public.nodies.app';
 }
 
 function getUsdtAddress(): string {
-  // Confirmed correct from Etherscan:
-  // https://sepolia.etherscan.io/address/0xf49fbbaae01254d208beb1682643679e35f67fb6
   return process.env.USDT_CONTRACT_ADDRESS || '0xd077a400968890eacc75cdc901f0356c943e4fdb';
 }
 
@@ -48,38 +45,51 @@ function getUsdtDecimals(): number {
   return parseInt(process.env.USDT_DECIMALS || '6', 10);
 }
 
-// ─── Mnemonic — read process.env directly first, file fallback only if needed ─
+// ── Mnemonic ──────────────────────────────────────────────────────────────────
 
 async function getMnemonic(): Promise<string | null> {
-  // Step 1: process.env — Next.js loads .env.local here at startup
+  // Always check process.env first — this is the ONLY source on Vercel
   if (process.env.WALLET_MNEMONIC) {
     return process.env.WALLET_MNEMONIC;
   }
 
-  // Step 2: read .env.local file directly as fallback
-  // (needed if mnemonic was written after the server started)
-  const envPath = path.join(process.cwd(), '.env.local');
-  try {
-    const content = await fs.readFile(envPath, 'utf8');
-    const match = content.match(/^WALLET_MNEMONIC=(.+)$/m);
-    if (match) {
-      const mnemonic = match[1].trim();
-      // Cache it so subsequent requests use process.env directly
-      process.env.WALLET_MNEMONIC = mnemonic;
-      return mnemonic;
-    }
-  } catch { /* file doesn't exist yet */ }
+  // Local dev fallback: read .env.local directly
+  // (needed when mnemonic was just written and server hasn't restarted)
+  if (!isVercel) {
+    try {
+      const { promises: fs } = await import('fs');
+      const { join } = await import('path');
+      const envPath = join(process.cwd(), '.env.local');
+      const content = await fs.readFile(envPath, 'utf8');
+      const match = content.match(/^WALLET_MNEMONIC=(.+)$/m);
+      if (match) {
+        process.env.WALLET_MNEMONIC = match[1].trim();
+        return process.env.WALLET_MNEMONIC;
+      }
+    } catch { /* file doesn't exist */ }
+  }
 
-  return null; // No mnemonic — wallet hasn't been created yet
+  return null;
 }
 
 async function getOrCreateMnemonic(): Promise<string> {
   const existing = await getMnemonic();
   if (existing) return existing;
 
-  // Generate new mnemonic and save to .env.local
+  // On Vercel: cannot write files — mnemonic must be set in dashboard
+  if (isVercel) {
+    throw new Error(
+      'WALLET_MNEMONIC is not set. Add it to your Vercel environment variables at ' +
+      'vercel.com → Project → Settings → Environment Variables'
+    );
+  }
+
+  // Local dev only: generate and save to .env.local
+  const { promises: fs } = await import('fs');
+  const { join } = await import('path');
+
   const newMnemonic = WDK.getRandomSeedPhrase();
-  const envPath = path.join(process.cwd(), '.env.local');
+  const envPath = join(process.cwd(), '.env.local');
   let existing_content = '';
   try { existing_content = await fs.readFile(envPath, 'utf8'); } catch { /* ok */ }
   const sep = existing_content.length > 0 && !existing_content.endsWith('\n') ? '\n' : '';
@@ -89,55 +99,50 @@ async function getOrCreateMnemonic(): Promise<string> {
   return newMnemonic;
 }
 
-// ─── Wallet init — exact WDK docs pattern ─────────────────────────────────────
+// ── Wallet init ───────────────────────────────────────────────────────────────
 
 export async function initializeWallet(mnemonic?: string): Promise<WalletInitResult> {
   const seedPhrase = mnemonic ?? (await getOrCreateMnemonic());
   const provider = getRpcUrl();
 
-  // Exact pattern from WDK quickstart docs:
-  // https://docs.wdk.tether.io/start-building/nodejs-bare-quickstart
   const wdkInstance = new WDK(seedPhrase)
     .registerWallet('ethereum', WalletManagerEvm, { provider });
 
   const account = await wdkInstance.getAccount('ethereum', 0);
   const address = await account.getAddress();
 
-  console.log(`[WDK] Wallet ready — ${address}`);
+  console.log(`[WDK] Wallet: ${address}`);
   return { wdk: wdkInstance, account, address, seedPhrase };
 }
 
-// ─── Balance — identical to the working debug route logic ─────────────────────
+// ── Balance ───────────────────────────────────────────────────────────────────
 
 export async function getWalletBalance(account: any): Promise<BalanceResult> {
   const usdtAddr = getUsdtAddress();
   const usdtDec  = getUsdtDecimals();
 
-  // ── ETH — same as debug: await account.getBalance() → bigint (wei) ────────
   let ethFormatted = '0.0000';
   try {
     const wei: bigint = await account.getBalance();
     ethFormatted = (Number(wei) / 1e18).toFixed(4);
-    console.log(`[WDK] ETH: ${wei.toString()} wei → ${ethFormatted}`);
+    console.log(`[WDK] ETH: ${ethFormatted}`);
   } catch (err) {
     console.error('[WDK] ETH balance error:', err instanceof Error ? err.message : err);
   }
 
-  // ── USDT — same as debug: await account.getTokenBalance(addr) → bigint ────
   let usdtFormatted = '0.000000';
   try {
     const units: bigint = await account.getTokenBalance(usdtAddr);
     usdtFormatted = (Number(units) / Math.pow(10, usdtDec)).toFixed(usdtDec);
-    console.log(`[WDK] USDT: ${units.toString()} units → ${usdtFormatted}`);
+    console.log(`[WDK] USDT: ${usdtFormatted}`);
   } catch (err) {
     console.error('[WDK] USDT balance error:', err instanceof Error ? err.message : err);
-    console.error('[WDK] Contract:', usdtAddr);
   }
 
   return { balances: { ETH: ethFormatted, USDT: usdtFormatted } };
 }
 
-// ─── Fee estimation ───────────────────────────────────────────────────────────
+// ── Fee estimation ────────────────────────────────────────────────────────────
 
 export async function estimateFee(account: any, toAddress: string, amountEth: string) {
   const valueWei = BigInt(Math.round(parseFloat(amountEth) * 1e18));
@@ -148,35 +153,20 @@ export async function estimateFee(account: any, toAddress: string, amountEth: st
   };
 }
 
-// ─── Send native ETH ──────────────────────────────────────────────────────────
+// ── Send ETH ──────────────────────────────────────────────────────────────────
 
 export async function sendPayment(account: any, toAddress: string, amountEth: string) {
   const valueWei = BigInt(Math.round(parseFloat(amountEth) * 1e18));
   const result = await account.sendTransaction({ to: toAddress, value: valueWei });
-  return {
-    txId: result.hash,
-    feeWei: result.fee.toString(),
-    status: 'completed',
-    timestamp: new Date().toISOString(),
-  };
+  return { txId: result.hash, feeWei: result.fee.toString(), status: 'completed', timestamp: new Date().toISOString() };
 }
 
-// ─── Send ERC-20 (USDT) ───────────────────────────────────────────────────────
+// ── Send USDT ─────────────────────────────────────────────────────────────────
 
 export async function sendTokenPayment(account: any, toAddress: string, amountUsdt: string) {
   const usdtAddr    = getUsdtAddress();
   const usdtDec     = getUsdtDecimals();
   const amountUnits = BigInt(Math.round(parseFloat(amountUsdt) * Math.pow(10, usdtDec)));
-
-  const result = await account.transfer({
-    token: usdtAddr,
-    recipient: toAddress,
-    amount: amountUnits,
-  });
-  return {
-    txId: result.hash,
-    feeWei: result.fee.toString(),
-    status: 'completed',
-    timestamp: new Date().toISOString(),
-  };
+  const result = await account.transfer({ token: usdtAddr, recipient: toAddress, amount: amountUnits });
+  return { txId: result.hash, feeWei: result.fee.toString(), status: 'completed', timestamp: new Date().toISOString() };
 }

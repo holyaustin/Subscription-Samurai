@@ -9,6 +9,9 @@
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 ---
+https://subscription-samurai.vercel.app/
+
+
 
 ## 📋 Table of Contents
 
@@ -355,42 +358,6 @@ This project leverages the Tether Wallet Development Kit for all blockchain oper
 
 ## 🎬 Demo Guide https://youtu.be/L4SrdfHd0H0
 
-### Quick Demo Script (5 minutes)
-
-**0:00 - 0:30: Wallet Creation**
-- Open the application
-- Click "Create Wallet"
-- Show the generated address
-
-**0:30 - 1:00: Add Test Funds**
-- Visit a faucet
-- Paste wallet address
-- Request test USDT
-
-**1:00 - 1:30: Configure Subscriptions**
-- Add 2-3 subscriptions
-- Different amounts and frequencies
-- Show the subscription list
-
-**1:30 - 2:00: Start the Agent**
-- Click "Start Agent"
-- Show the running status
-- Explain the cron schedule
-
-**2:00 - 2:30: Monitor Transactions**
-- Wait for scheduled execution
-- Show successful transaction in history
-- Highlight transaction hash and Etherscan link
-
-**2:30 - 3:00: Demonstrate Safety**
-- Show balance check before payment
-- Demonstrate failed transaction when balance low
-- Show error logging
-
-**3:00 - 4:00: Technical Deep Dive**
-- Explain WDK integration
-- Show agent autonomy
-- Discuss architecture
 
 ---
 
