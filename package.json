@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "dev:all": "concurrently --names \"next,agent\" --prefix-colors \"blue,green\" \"next dev\" \"node agent-scripts/subscription-agent.js\"",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "agent": "node agent-scripts/subscription-agent.js",
