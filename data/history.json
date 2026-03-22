@@ -1,6 +1,123 @@
 {
   "transactions": [
     {
+      "type": "failed",
+      "recipient": "0x9d105B1122eA3a4808Be9AFFeE0287ac1740410f",
+      "amount": 2.3,
+      "frequency": "every_minute",
+      "reason": "insufficient_balance",
+      "timestamp": "2026-03-22T13:32:00.750Z"
+    },
+    {
+      "type": "failed",
+      "recipient": "0x9d105B1122eA3a4808Be9AFFeE0287ac1740410f",
+      "amount": 2.3,
+      "frequency": "every_minute",
+      "reason": "insufficient_balance",
+      "timestamp": "2026-03-22T13:31:00.792Z"
+    },
+    {
+      "type": "failed",
+      "recipient": "0x9d105B1122eA3a4808Be9AFFeE0287ac1740410f",
+      "amount": 2.3,
+      "frequency": "every_minute",
+      "reason": "insufficient_balance",
+      "timestamp": "2026-03-22T13:29:00.927Z"
+    },
+    {
+      "type": "failed",
+      "recipient": "0x9d105B1122eA3a4808Be9AFFeE0287ac1740410f",
+      "amount": 2.3,
+      "frequency": "every_minute",
+      "reason": "insufficient_balance",
+      "timestamp": "2026-03-22T13:28:00.735Z"
+    },
+    {
+      "type": "failed",
+      "recipient": "0x9d105B1122eA3a4808Be9AFFeE0287ac1740410f",
+      "amount": 2.3,
+      "frequency": "every_minute",
+      "reason": "insufficient_balance",
+      "timestamp": "2026-03-22T13:27:00.800Z"
+    },
+    {
+      "type": "failed",
+      "recipient": "0x9d105B1122eA3a4808Be9AFFeE0287ac1740410f",
+      "amount": 2.3,
+      "frequency": "every_minute",
+      "reason": "insufficient_balance",
+      "timestamp": "2026-03-22T13:26:00.852Z"
+    },
+    {
+      "type": "failed",
+      "recipient": "0x9d105B1122eA3a4808Be9AFFeE0287ac1740410f",
+      "amount": 2.3,
+      "frequency": "every_minute",
+      "reason": "insufficient_balance",
+      "timestamp": "2026-03-22T13:25:00.750Z"
+    },
+    {
+      "type": "failed",
+      "recipient": "0x9d105B1122eA3a4808Be9AFFeE0287ac1740410f",
+      "amount": 2.3,
+      "frequency": "every_minute",
+      "reason": "insufficient_balance",
+      "timestamp": "2026-03-22T13:24:00.753Z"
+    },
+    {
+      "type": "failed",
+      "recipient": "0x9d105B1122eA3a4808Be9AFFeE0287ac1740410f",
+      "amount": 2.3,
+      "frequency": "every_minute",
+      "reason": "insufficient_balance",
+      "timestamp": "2026-03-22T13:23:00.950Z"
+    },
+    {
+      "type": "success",
+      "txId": "0x8b82edfeab6f9b39d7d56b3f04cb0c0c35a054d82d2a76591179c39a4cf55f84",
+      "recipient": "0x9d105B1122eA3a4808Be9AFFeE0287ac1740410f",
+      "amount": 2.3,
+      "frequency": "every_minute",
+      "feeWei": "22580276286216",
+      "timestamp": "2026-03-22T13:22:00.770Z"
+    },
+    {
+      "type": "success",
+      "txId": "0x07cfce7e9af18a70389f53f09bae8efee4556178618de38e8f0cb3af188dafa7",
+      "recipient": "0x9d105B1122eA3a4808Be9AFFeE0287ac1740410f",
+      "amount": 2.3,
+      "frequency": "every_minute",
+      "feeWei": "19748992592472",
+      "timestamp": "2026-03-22T13:21:00.766Z"
+    },
+    {
+      "type": "success",
+      "txId": "0x5487e5fc7c18a30600f1407c0b4183c825e00c72b768e9dffecb460c9c7896ea",
+      "recipient": "0x9d105B1122eA3a4808Be9AFFeE0287ac1740410f",
+      "amount": 2.3,
+      "frequency": "every_minute",
+      "feeWei": "17267433374048",
+      "timestamp": "2026-03-22T13:20:00.755Z"
+    },
+    {
+      "type": "success",
+      "txId": "0x7789060e61ad07f5548c70d2de8d02602aef4f688ba393d8807a3716ffa368dc",
+      "recipient": "0x9d105B1122eA3a4808Be9AFFeE0287ac1740410f",
+      "amount": 2.3,
+      "frequency": "every_minute",
+      "feeWei": "15762018742360",
+      "timestamp": "2026-03-22T13:18:00.990Z"
+    },
+    {
+      "type": "success",
+      "txId": "0x3dbef60b443dcb7d619bfd8ede76ce150424f233f81c87827b86ceb155d0ee04",
+      "recipient": "0x9d105B1122eA3a4808Be9AFFeE0287ac1740410f",
+      "amount": 2.3,
+      "frequency": "every_minute",
+      "feeWei": "14935744221024",
+      "timestamp": "2026-03-22T13:17:00.802Z"
+    },
+    {
       "type": "success",
       "txId": "0xd6ce66b31ad62ebf5df4455fcfed0b5bdb083131cfe00069ac6b70f2fb457a0b",
       "recipient": "0xab2E06a5dd2f751Df0d2D2448788D8cBd06ac149",

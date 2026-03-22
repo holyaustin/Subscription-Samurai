@@ -1,0 +1,11 @@
+{
+  "subscriptions": [
+    {
+      "recipient": "0x9d105B1122eA3a4808Be9AFFeE0287ac1740410f",
+      "amount": 2.3,
+      "frequency": "every_minute",
+      "active": true,
+      "lastPayment": "2026-03-22T13:22:00.770Z"
+    }
+  ]
+}

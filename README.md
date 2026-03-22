@@ -134,7 +134,7 @@ graph TD
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/yourusername/subscription-samurai.git
+git clone https://github.com/holyaustin/subscription-samurai.git
 cd subscription-samurai
 ```
 
@@ -353,7 +353,7 @@ This project leverages the Tether Wallet Development Kit for all blockchain oper
 
 ---
 
-## 🎬 Demo Guide
+## 🎬 Demo Guide https://youtu.be/L4SrdfHd0H0
 
 ### Quick Demo Script (5 minutes)
 
@@ -429,7 +429,6 @@ This project leverages the Tether Wallet Development Kit for all blockchain oper
 - [ ] **Web3 Notifications**: Real-time transaction alerts
 - [ ] **Analytics Dashboard**: Payment trends and insights
 - [ ] **Social Features**: Share subscriptions with teams
-- [ ] **Gas Optimization**: Use WDK's quote system for optimal fees
 
 ---
 
@@ -463,8 +462,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 📞 Contact & Support
 
 - **Discord**: Join the [Tether WDK Discord](https://discord.gg/arYXDhHB2w)
-- **GitHub Issues**: [Open an issue](https://github.com/yourusername/subscription-samurai/issues)
-- **Email**: [support@subscriptionsamurai.com](mailto:support@subscriptionsamurai.com)
+- **GitHub Issues**: [Open an issue](https://github.com/holyaustin/subscription-samurai/issues)
+- **Twitter**: [https://x.com/holyaustin](https://x.com/holyaustin)
 
 ---
 
