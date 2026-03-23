@@ -3,6 +3,74 @@ import WDK from '@tetherto/wdk';
 import WalletManagerEvm from '@tetherto/wdk-wallet-evm';
 import { userStates, addTransaction, getTransactionStats, type UserAgentState, type Subscription } from '@/app/lib/agentStore';
 
+// USDT Contract Address on Sepolia
+const USDT_CONTRACT_ADDRESS = process.env.USDT_CONTRACT_ADDRESS || '0xd077a400968890eacc75cdc901f0356c943e4fdb';
+
+// ERC-20 ABI for transfer function
+const ERC20_ABI = [
+  {
+    "constant": false,
+    "inputs": [
+      { "name": "_to", "type": "address" },
+      { "name": "_value", "type": "uint256" }
+    ],
+    "name": "transfer",
+    "outputs": [{ "name": "", "type": "bool" }],
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [{ "name": "_owner", "type": "address" }],
+    "name": "balanceOf",
+    "outputs": [{ "name": "balance", "type": "uint256" }],
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [],
+    "name": "decimals",
+    "outputs": [{ "name": "", "type": "uint8" }],
+    "type": "function"
+  }
+];
+
+// Helper to get USDT balance
+async function getUSDTBalance(account: any, walletAddress: string): Promise<number> {
+  try {
+    // Get the contract interface
+    const contract = account.getContract(USDT_CONTRACT_ADDRESS, ERC20_ABI);
+    const balanceWei = await contract.balanceOf(walletAddress);
+    // USDT has 6 decimals (not 18 like ETH)
+    const decimals = 6;
+    const balance = Number(balanceWei) / 10 ** decimals;
+    return balance;
+  } catch (error) {
+    console.error('Failed to get USDT balance:', error);
+    return 0;
+  }
+}
+
+// Helper to send USDT
+async function sendUSDT(account: any, toAddress: string, amount: number): Promise<any> {
+  // USDT has 6 decimals
+  const decimals = 6;
+  const amountWithDecimals = BigInt(Math.floor(amount * 10 ** decimals));
+  
+  // Get the contract interface
+  const contract = account.getContract(USDT_CONTRACT_ADDRESS, ERC20_ABI);
+  
+  // Call transfer function on USDT contract
+  const tx = await contract.transfer(toAddress, amountWithDecimals);
+  
+  return tx;
+}
+
+// Helper to get native ETH balance
+async function getETHBalance(account: any): Promise<number> {
+  const balanceWei = await account.getBalance();
+  return Number(balanceWei) / 1e18;
+}
+
 // Helper to process a single user's subscriptions
 async function processUserSubscriptions(state: UserAgentState) {
   const { address, mnemonic, subscriptions } = state;
@@ -14,11 +82,13 @@ async function processUserSubscriptions(state: UserAgentState) {
   const wdk = new WDK(mnemonic).registerWallet('ethereum', WalletManagerEvm, { provider });
   const account = await wdk.getAccount('ethereum', 0);
   
-  // Check current balance
-  const balanceWei = await account.getBalance();
-  const balance = Number(balanceWei) / 1e18;
-
-  console.log(`🔍 Processing ${subscriptions.length} subscriptions for ${address} (balance: ${balance.toFixed(4)} USDT)`);
+  // Get both ETH and USDT balances
+  const ethBalance = await getETHBalance(account);
+  const usdtBalance = await getUSDTBalance(account, address);
+  
+  console.log(`🔍 Processing ${subscriptions.length} subscriptions for ${address}`);
+  console.log(`   ETH Balance: ${ethBalance.toFixed(4)} ETH`);
+  console.log(`   USDT Balance: ${usdtBalance.toFixed(2)} USDT`);
 
   for (const sub of subscriptions) {
     if (!sub.active) {
@@ -52,9 +122,9 @@ async function processUserSubscriptions(state: UserAgentState) {
     }
 
     if (shouldPay) {
-      // Check if sufficient balance
-      if (balance < sub.amount) {
-        console.log(`❌ Insufficient balance for ${sub.recipient}: ${balance.toFixed(4)} < ${sub.amount}`);
+      // Check if sufficient USDT balance (not ETH)
+      if (usdtBalance < sub.amount) {
+        console.log(`❌ Insufficient USDT balance for ${sub.recipient}: ${usdtBalance.toFixed(2)} < ${sub.amount}`);
         
         // Record FAILED transaction
         addTransaction({
@@ -62,24 +132,20 @@ async function processUserSubscriptions(state: UserAgentState) {
           recipient: sub.recipient,
           amount: sub.amount,
           frequency: sub.frequency,
-          reason: `Insufficient balance: ${balance.toFixed(4)} USDT < ${sub.amount} USDT`,
+          reason: `Insufficient USDT balance: ${usdtBalance.toFixed(2)} USDT < ${sub.amount} USDT (ETH balance: ${ethBalance.toFixed(4)} ETH)`,
           timestamp: now.toISOString()
         });
-        results.push({ sub, success: false, reason: 'insufficient balance' });
+        results.push({ sub, success: false, reason: 'insufficient USDT balance' });
         continue;
       }
 
       try {
-        // Execute payment
-        const value = BigInt(Math.floor(sub.amount * 1e18));
         console.log(`💸 Sending ${sub.amount} USDT to ${sub.recipient}...`);
         
-        const tx = await account.sendTransaction({
-          to: sub.recipient,
-          value
-        });
+        // Send USDT (ERC-20 token)
+        const tx = await sendUSDT(account, sub.recipient, sub.amount);
         
-        console.log(`✅ Transaction sent: ${tx.hash}`);
+        console.log(`✅ USDT Transaction sent: ${tx.hash}`);
         
         // Record SUCCESS transaction
         addTransaction({
@@ -113,7 +179,15 @@ async function processUserSubscriptions(state: UserAgentState) {
     }
   }
 
-  return { address, results, processedAt: now.toISOString(), balance };
+  return { 
+    address, 
+    results, 
+    processedAt: now.toISOString(), 
+    balances: {
+      eth: ethBalance,
+      usdt: usdtBalance
+    }
+  };
 }
 
 export async function GET(request: NextRequest) {
