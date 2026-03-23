@@ -196,7 +196,7 @@ export default function WalletStatus() {
       <div className="card space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+          <h2 className="text-xl font-semibold text-gray-100 flex items-center gap-2">
             <span>💰</span> My Wallet
           </h2>
           <div className="flex items-center gap-2">
@@ -237,8 +237,8 @@ export default function WalletStatus() {
 
         {/* Address */}
         <div>
-          <p className="text-xs font-medium text-gray-500 mb-1 uppercase tracking-wide">Address</p>
-          <p className="font-mono text-xs bg-gray-50 p-2 rounded-lg break-all border border-gray-200 select-all">
+          <p className="text-xs font-medium text-gray-300 mb-1 uppercase tracking-wide">Address</p>
+          <p className="font-mono text-xs bg-gray-50 p-2 rounded-lg break-all border border-gray-200 select-all text-gray-900">
             {balances.address}
           </p>
         </div>
@@ -246,13 +246,13 @@ export default function WalletStatus() {
         {/* Balances */}
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-blue-50 rounded-xl p-3 border border-blue-100">
-            <p className="text-xs font-medium text-blue-600 mb-1">ETH (gas)</p>
+            <p className="text-xs font-medium text-blue-600 mb-1">ETH</p>
             <p className="text-xl font-bold text-blue-700 tabular-nums">{eth}</p>
             <p className="text-xs text-blue-500">ETH</p>
           </div>
           <div className={`rounded-xl p-3 border ${hasUsdt ? 'bg-green-50 border-green-100' : 'bg-gray-50 border-gray-100'}`}>
             <p className={`text-xs font-medium mb-1 ${hasUsdt ? 'text-green-600' : 'text-gray-500'}`}>USDT</p>
-            <p className={`text-xl font-bold tabular-nums ${hasUsdt ? 'text-green-700' : 'text-gray-400'}`}>
+            <p className={`text-xl font-bold tabular-nums ${hasUsdt ? 'text-green-800' : 'text-gray-400'}`}>
               {parseFloat(usdt).toFixed(2)}
             </p>
             <p className={`text-xs ${hasUsdt ? 'text-green-500' : 'text-gray-400'}`}>USDT</p>
