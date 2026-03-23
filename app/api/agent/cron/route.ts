@@ -114,14 +114,14 @@ async function processUserSubscriptions(state: UserAgentState) {
           recipient: sub.recipient,
           amount: sub.amount,
           frequency: sub.frequency,
-          reason: `Insufficient USDT balance: ${usdtBalance.toFixed(USDT_DECIMALS)} USDT < ${sub.amount} USDT (ETH balance for gas: ${ethBalance.toFixed(4)} ETH)`,
+          reason: `Insufficient USDT balance: ${usdtBalance.toFixed(USDT_DECIMALS)} USDT < ${sub.amount} USDT `,
           timestamp: now.toISOString()
         });
         results.push({ sub, success: false, reason: 'insufficient USDT balance' });
         continue;
       }
 
-      // Also check if user has enough ETH for gas
+      /** // Also check if user has enough ETH for gas
       if (ethBalance < 0.001) {
         console.log(`⚠️ Low ETH balance for gas: ${ethBalance.toFixed(4)} ETH`);
         addTransaction({
@@ -135,7 +135,7 @@ async function processUserSubscriptions(state: UserAgentState) {
         results.push({ sub, success: false, reason: 'low ETH for gas' });
         continue;
       }
-
+      */
       try {
         console.log(`💸 Sending ${sub.amount} USDT to ${sub.recipient}...`);
         
