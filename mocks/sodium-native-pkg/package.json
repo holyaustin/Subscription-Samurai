@@ -1,0 +1,6 @@
+{
+  "name": "sodium-native",
+  "version": "5.1.0",
+  "description": "Pure JS stub for sodium-native — works in Vercel serverless",
+  "main": "index.js"
+}

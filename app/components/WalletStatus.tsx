@@ -208,7 +208,7 @@ export default function WalletStatus() {
         <div className="space-y-4">
           <div>
             <p className="text-xs font-medium text-gray-500 mb-1 uppercase tracking-wide">Wallet Address</p>
-            <p className="font-mono text-xs bg-gray-50 p-3 rounded-lg break-all border border-gray-200 select-all cursor-text">
+            <p className="font-mono text-xs bg-gray-50 p-3 rounded-lg break-all border border-gray-200 select-all cursor-text text-gray-800">
               {wallet.address}
             </p>
           </div>

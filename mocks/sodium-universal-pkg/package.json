@@ -1,0 +1,13 @@
+{
+  "name": "sodium-universal",
+  "version": "4.0.0",
+  "description": "Pure JS stub for sodium-universal",
+  "main": "index.js",
+  "exports": {
+    ".": {
+      "require": "./index.js",
+      "import": "./index.js",
+      "default": "./index.js"
+    }
+  }
+}
