@@ -20,6 +20,10 @@ export interface UserAgentState {
   address: string;
   subscriptions: Subscription[];
   startedAt: string;
+    lastBalance?: {  // Optional: track last known balances
+    eth: number;
+    usdt: number;
+  };
 }
 
 export interface Transaction {

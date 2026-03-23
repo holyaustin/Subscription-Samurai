@@ -4,7 +4,8 @@ import WalletManagerEvm from '@tetherto/wdk-wallet-evm';
 import { userStates, addTransaction, getTransactionStats, type UserAgentState, type Subscription } from '@/app/lib/agentStore';
 
 // USDT Contract Address on Sepolia
-const USDT_CONTRACT_ADDRESS = process.env.USDT_CONTRACT_ADDRESS || '0xd077a400968890eacc75cdc901f0356c943e4fdb';
+const USDT_ADDRESS = process.env.USDT_CONTRACT_ADDRESS || '0xd077a400968890eacc75cdc901f0356c943e4fdb';
+const USDT_DECIMALS = parseInt(process.env.USDT_DECIMALS || '6', 10);
 
 // ERC-20 ABI for transfer function
 const ERC20_ABI = [
@@ -17,32 +18,14 @@ const ERC20_ABI = [
     "name": "transfer",
     "outputs": [{ "name": "", "type": "bool" }],
     "type": "function"
-  },
-  {
-    "constant": true,
-    "inputs": [{ "name": "_owner", "type": "address" }],
-    "name": "balanceOf",
-    "outputs": [{ "name": "balance", "type": "uint256" }],
-    "type": "function"
-  },
-  {
-    "constant": true,
-    "inputs": [],
-    "name": "decimals",
-    "outputs": [{ "name": "", "type": "uint8" }],
-    "type": "function"
   }
 ];
 
-// Helper to get USDT balance
-async function getUSDTBalance(account: any, walletAddress: string): Promise<number> {
+// Helper to get USDT balance using the same method as the working balance route
+async function getUSDTBalance(account: any): Promise<number> {
   try {
-    // Get the contract interface
-    const contract = account.getContract(USDT_CONTRACT_ADDRESS, ERC20_ABI);
-    const balanceWei = await contract.balanceOf(walletAddress);
-    // USDT has 6 decimals (not 18 like ETH)
-    const decimals = 6;
-    const balance = Number(balanceWei) / 10 ** decimals;
+    const units: bigint = await account.getTokenBalance(USDT_ADDRESS);
+    const balance = Number(units) / Math.pow(10, USDT_DECIMALS);
     return balance;
   } catch (error) {
     console.error('Failed to get USDT balance:', error);
@@ -53,11 +36,10 @@ async function getUSDTBalance(account: any, walletAddress: string): Promise<numb
 // Helper to send USDT
 async function sendUSDT(account: any, toAddress: string, amount: number): Promise<any> {
   // USDT has 6 decimals
-  const decimals = 6;
-  const amountWithDecimals = BigInt(Math.floor(amount * 10 ** decimals));
+  const amountWithDecimals = BigInt(Math.floor(amount * Math.pow(10, USDT_DECIMALS)));
   
   // Get the contract interface
-  const contract = account.getContract(USDT_CONTRACT_ADDRESS, ERC20_ABI);
+  const contract = account.getContract(USDT_ADDRESS, ERC20_ABI);
   
   // Call transfer function on USDT contract
   const tx = await contract.transfer(toAddress, amountWithDecimals);
@@ -82,13 +64,13 @@ async function processUserSubscriptions(state: UserAgentState) {
   const wdk = new WDK(mnemonic).registerWallet('ethereum', WalletManagerEvm, { provider });
   const account = await wdk.getAccount('ethereum', 0);
   
-  // Get both ETH and USDT balances
+  // Get both ETH and USDT balances using the correct methods
   const ethBalance = await getETHBalance(account);
-  const usdtBalance = await getUSDTBalance(account, address);
+  const usdtBalance = await getUSDTBalance(account);
   
   console.log(`🔍 Processing ${subscriptions.length} subscriptions for ${address}`);
   console.log(`   ETH Balance: ${ethBalance.toFixed(4)} ETH`);
-  console.log(`   USDT Balance: ${usdtBalance.toFixed(2)} USDT`);
+  console.log(`   USDT Balance: ${usdtBalance.toFixed(USDT_DECIMALS)} USDT`);
 
   for (const sub of subscriptions) {
     if (!sub.active) {
@@ -122,9 +104,9 @@ async function processUserSubscriptions(state: UserAgentState) {
     }
 
     if (shouldPay) {
-      // Check if sufficient USDT balance (not ETH)
+      // Check if sufficient USDT balance
       if (usdtBalance < sub.amount) {
-        console.log(`❌ Insufficient USDT balance for ${sub.recipient}: ${usdtBalance.toFixed(2)} < ${sub.amount}`);
+        console.log(`❌ Insufficient USDT balance for ${sub.recipient}: ${usdtBalance.toFixed(USDT_DECIMALS)} < ${sub.amount}`);
         
         // Record FAILED transaction
         addTransaction({
@@ -132,10 +114,25 @@ async function processUserSubscriptions(state: UserAgentState) {
           recipient: sub.recipient,
           amount: sub.amount,
           frequency: sub.frequency,
-          reason: `Insufficient USDT balance: ${usdtBalance.toFixed(2)} USDT < ${sub.amount} USDT (ETH balance: ${ethBalance.toFixed(4)} ETH)`,
+          reason: `Insufficient USDT balance: ${usdtBalance.toFixed(USDT_DECIMALS)} USDT < ${sub.amount} USDT (ETH balance for gas: ${ethBalance.toFixed(4)} ETH)`,
           timestamp: now.toISOString()
         });
         results.push({ sub, success: false, reason: 'insufficient USDT balance' });
+        continue;
+      }
+
+      // Also check if user has enough ETH for gas
+      if (ethBalance < 0.001) {
+        console.log(`⚠️ Low ETH balance for gas: ${ethBalance.toFixed(4)} ETH`);
+        addTransaction({
+          type: 'failed',
+          recipient: sub.recipient,
+          amount: sub.amount,
+          frequency: sub.frequency,
+          reason: `Low ETH balance for gas: ${ethBalance.toFixed(4)} ETH (needs at least 0.001 ETH)`,
+          timestamp: now.toISOString()
+        });
+        results.push({ sub, success: false, reason: 'low ETH for gas' });
         continue;
       }
 
@@ -206,25 +203,27 @@ export async function GET(request: NextRequest) {
 
     const results = [];
     let activeUsers = 0;
+    let totalSubscriptionsProcessed = 0;
     
     // Process all active users
     for (const [address, state] of userStates.entries()) {
       if (state.active) {
         activeUsers++;
-        console.log(`👤 Processing user: ${address} (started at ${state.startedAt})`);
+        totalSubscriptionsProcessed += state.subscriptions.length;
+        console.log(`👤 Processing user: ${address} (${state.subscriptions.length} subscriptions, started at ${state.startedAt})`);
         const result = await processUserSubscriptions(state);
         results.push(result);
       }
     }
     
-    console.log(`✅ Cron completed: Processed ${activeUsers} active users, ${results.length} total results`);
+    console.log(`✅ Cron completed: Processed ${activeUsers} active users, ${totalSubscriptionsProcessed} subscriptions checked`);
     
     // Get transaction stats for response
     const stats = getTransactionStats();
     
     return NextResponse.json({
       success: true,
-      message: `Processed ${activeUsers} active users`,
+      message: `Processed ${activeUsers} active users, ${totalSubscriptionsProcessed} subscriptions`,
       stats,
       results
     });
