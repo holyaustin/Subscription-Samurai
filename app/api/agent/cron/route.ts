@@ -1,20 +1,15 @@
 /**
  * GET /api/agent/cron
  *
- * Called by cron-job.org (free) every minute.
- * Setup: https://cron-job.org → URL: https://your-app.vercel.app/api/agent/cron?secret=YOUR_CRON_SECRET
+ * Processes ALL active users' subscriptions in one call.
+ * Triggered every minute by cron-job.org (free).
+ * Setup: https://cron-job.org → URL: https://your-app.vercel.app/api/agent/cron?secret=CRON_SECRET
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import WDK from '@tetherto/wdk';
 import WalletManagerEvm from '@tetherto/wdk-wallet-evm';
-import {
-  isAgentActive,
-  getSubscriptions,
-  updateSubscription,
-  addTransaction,
-  type Subscription,
-} from '@/app/lib/store';
+import { userStates, addTransaction } from '@/app/lib/agentStore';
 
 const USDT_ADDRESS  = process.env.USDT_CONTRACT_ADDRESS || '0xd077a400968890eacc75cdc901f0356c943e4fdb';
 const USDT_DECIMALS = parseInt(process.env.USDT_DECIMALS || '6', 10);
@@ -22,15 +17,13 @@ const USDT_DECIMALS = parseInt(process.env.USDT_DECIMALS || '6', 10);
 function isAuthorized(request: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
   if (!secret) return true;
-  const querySecret = request.nextUrl.searchParams.get('secret');
-  if (querySecret === secret) return true;
-  const authHeader = request.headers.get('authorization');
-  if (authHeader === `Bearer ${secret}`) return true;
+  if (request.nextUrl.searchParams.get('secret') === secret) return true;
+  if (request.headers.get('authorization') === `Bearer ${secret}`) return true;
   return false;
 }
 
-function getNextDueDate(lastPaymentDate: Date, frequency: string): Date {
-  const next = new Date(lastPaymentDate);
+function getNextDueDate(lastPayment: Date, frequency: string): Date {
+  const next = new Date(lastPayment);
   switch (frequency) {
     case 'every_minute':     next.setMinutes(next.getMinutes() + 1);   break;
     case 'every_5_minutes':  next.setMinutes(next.getMinutes() + 5);   break;
@@ -51,114 +44,78 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  if (!isAgentActive()) {
-    return NextResponse.json({
-      success: true,
-      message: 'Agent is stopped. Start it from the UI first.',
-    });
-  }
+  const provider = process.env.RPC_URL || 'https://ethereum-sepolia-public.nodies.app';
 
-  const results = {
+  const summary = {
     timestamp: new Date().toISOString(),
+    usersProcessed: 0,
     processed: [] as unknown[],
-    skipped:   [] as unknown[],
-    errors:    [] as unknown[],
+    errors: [] as unknown[],
   };
 
-  try {
-    const mnemonic = process.env.WALLET_MNEMONIC;
-    if (!mnemonic) {
-      return NextResponse.json({ error: 'WALLET_MNEMONIC not set' }, { status: 500 });
-    }
+  for (const [address, state] of userStates.entries()) {
+    if (!state.active || !state.subscriptions?.length) continue;
 
-    const provider = process.env.RPC_URL || 'https://ethereum-sepolia-public.nodies.app';
+    summary.usersProcessed++;
 
-    const wdkInstance = new WDK(mnemonic)
-      .registerWallet('ethereum', WalletManagerEvm, { provider });
-
-    const account = await wdkInstance.getAccount('ethereum', 0);
-
-    // Get current USDT balance
-    let usdtBal = 0;
     try {
-      const usdtUnits: bigint = await account.getTokenBalance(USDT_ADDRESS);
-      usdtBal = Number(usdtUnits) / Math.pow(10, USDT_DECIMALS);
-    } catch { /* non-fatal */ }
+      const wdk = new WDK(state.mnemonic)
+        .registerWallet('ethereum', WalletManagerEvm, { provider });
 
-    const subscriptions = getSubscriptions();
+      const account = await wdk.getAccount('ethereum', 0);
 
-    for (let i = 0; i < subscriptions.length; i++) {
-      const sub = subscriptions[i];
-      if (!sub.active) continue;
-
-      const now         = new Date();
-      const lastPayment = sub.lastPayment ? new Date(sub.lastPayment) : new Date(0);
-      const nextDue     = getNextDueDate(lastPayment, sub.frequency);
-
-      if (now < nextDue) {
-        results.skipped.push({ recipient: sub.recipient, nextDue: nextDue.toISOString() });
-        continue;
-      }
-
-      if (usdtBal < sub.amount) {
-        addTransaction({
-          type: 'failed',
-          recipient: sub.recipient,
-          amount: sub.amount,
-          frequency: sub.frequency,
-          reason: 'insufficient_balance',
-          timestamp: now.toISOString(),
-        });
-        results.errors.push({ recipient: sub.recipient, reason: 'insufficient_balance' });
-        continue;
-      }
-
-      // Mark paid BEFORE sending to prevent double-fire
-      updateSubscription(i, { lastPayment: now.toISOString() });
-
+      let usdtBal = 0;
       try {
-        const amountUnits = BigInt(Math.round(sub.amount * Math.pow(10, USDT_DECIMALS)));
-        const result = await account.transfer({
-          token: USDT_ADDRESS,
-          recipient: sub.recipient,
-          amount: amountUnits,
-        });
+        const units: bigint = await account.getTokenBalance(USDT_ADDRESS);
+        usdtBal = Number(units) / Math.pow(10, USDT_DECIMALS);
+      } catch { /* non-fatal */ }
 
-        usdtBal -= sub.amount;
+      for (let i = 0; i < state.subscriptions.length; i++) {
+        const sub = state.subscriptions[i];
+        if (!sub.active) continue;
 
-        addTransaction({
-          type: 'success',
-          txId: result.hash,
-          recipient: sub.recipient,
-          amount: sub.amount,
-          frequency: sub.frequency,
-          feeWei: result.fee.toString(),
-          timestamp: now.toISOString(),
-        });
+        const now = new Date();
+        const lastPayment = sub.lastPayment ? new Date(sub.lastPayment) : new Date(0);
+        const nextDue = getNextDueDate(lastPayment, sub.frequency);
 
-        results.processed.push({ recipient: sub.recipient, amount: sub.amount, txId: result.hash });
+        if (now < nextDue) continue;
 
-      } catch (err) {
-        // Revert lastPayment so it retries next cron run
-        updateSubscription(i, { lastPayment: sub.lastPayment });
+        if (usdtBal < sub.amount) {
+          addTransaction({ type: 'failed', recipient: sub.recipient, amount: sub.amount, frequency: sub.frequency, reason: 'insufficient_balance', timestamp: now.toISOString() });
+          summary.errors.push({ address, recipient: sub.recipient, reason: 'insufficient_balance' });
+          continue;
+        }
 
-        const msg = err instanceof Error ? err.message : String(err);
-        addTransaction({
-          type: 'error',
-          recipient: sub.recipient,
-          amount: sub.amount,
-          frequency: sub.frequency,
-          error: msg,
-          timestamp: now.toISOString(),
-        });
-        results.errors.push({ recipient: sub.recipient, error: msg });
+        // Mark paid BEFORE sending to prevent double-fire
+        const updatedSubs = [...state.subscriptions];
+        updatedSubs[i] = { ...sub, lastPayment: now.toISOString() };
+        userStates.set(address, { ...state, subscriptions: updatedSubs });
+
+        try {
+          const amountUnits = BigInt(Math.round(sub.amount * Math.pow(10, USDT_DECIMALS)));
+          const result = await account.transfer({ token: USDT_ADDRESS, recipient: sub.recipient, amount: amountUnits });
+
+          usdtBal -= sub.amount;
+
+          addTransaction({ type: 'success', txId: result.hash, recipient: sub.recipient, amount: sub.amount, frequency: sub.frequency, feeWei: result.fee.toString(), timestamp: now.toISOString() });
+          summary.processed.push({ address, recipient: sub.recipient, txId: result.hash });
+
+        } catch (err) {
+          // Revert lastPayment on failure
+          const revertedSubs = [...state.subscriptions];
+          revertedSubs[i] = { ...sub, lastPayment: sub.lastPayment };
+          userStates.set(address, { ...state, subscriptions: revertedSubs });
+
+          const msg = err instanceof Error ? err.message : String(err);
+          addTransaction({ type: 'error', recipient: sub.recipient, amount: sub.amount, frequency: sub.frequency, error: msg, timestamp: now.toISOString() });
+          summary.errors.push({ address, recipient: sub.recipient, error: msg });
+        }
       }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      summary.errors.push({ address, error: msg });
     }
-
-    return NextResponse.json({ success: true, ...results });
-
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    return NextResponse.json({ success: false, error: msg }, { status: 500 });
   }
+
+  return NextResponse.json({ success: true, ...summary });
 }

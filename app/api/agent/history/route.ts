@@ -3,14 +3,13 @@
  */
 
 import { NextResponse } from 'next/server';
-import { getTransactions } from '@/app/lib/store';
+import { getTransactions } from '@/app/lib/agentStore';
 
 export async function GET() {
   try {
-    const transactions = getTransactions();
     return NextResponse.json({
       success: true,
-      history: { transactions },
+      history: { transactions: getTransactions() },
     });
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown error';

@@ -1,27 +1,44 @@
 /**
- * POST /api/agent/start  — saves subscriptions and marks agent active
- * DELETE /api/agent/start — marks agent inactive
+ * POST /api/agent/start  — saves user subscriptions and marks agent active
+ * DELETE /api/agent/start — marks agent inactive for this user
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { startAgent, stopAgent, getAgentState } from '@/app/lib/store';
+import WDK from '@tetherto/wdk';
+import WalletManagerEvm from '@tetherto/wdk-wallet-evm';
+import { userStates } from '@/app/lib/agentStore';
+
+async function deriveAddress(mnemonic: string): Promise<string> {
+  const provider = process.env.RPC_URL || 'https://ethereum-sepolia-public.nodies.app';
+  const wdk = new WDK(mnemonic).registerWallet('ethereum', WalletManagerEvm, { provider });
+  const account = await wdk.getAccount('ethereum', 0);
+  return account.getAddress();
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const { subscriptions } = await request.json();
+    const { mnemonic, subscriptions } = await request.json();
 
-    if (!subscriptions || subscriptions.length === 0) {
-      return NextResponse.json(
-        { success: false, error: 'No subscriptions provided' },
-        { status: 400 }
-      );
+    if (!mnemonic) {
+      return NextResponse.json({ success: false, error: 'mnemonic required' }, { status: 400 });
+    }
+    if (!subscriptions?.length) {
+      return NextResponse.json({ success: false, error: 'subscriptions required' }, { status: 400 });
     }
 
-    startAgent(subscriptions);
+    const address = await deriveAddress(mnemonic);
+
+    userStates.set(address, {
+      active: true,
+      mnemonic,
+      address,
+      subscriptions,
+      startedAt: new Date().toISOString(),
+    });
 
     return NextResponse.json({
       success: true,
-      message: `Agent started with ${subscriptions.length} subscription(s)`,
+      message: `Agent started for ${address} with ${subscriptions.length} subscription(s)`,
     });
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
@@ -29,9 +46,19 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(request: NextRequest) {
   try {
-    stopAgent();
+    const body = await request.json().catch(() => ({}));
+    const { mnemonic } = body as { mnemonic?: string };
+
+    if (mnemonic) {
+      const address = await deriveAddress(mnemonic);
+      const state = userStates.get(address);
+      if (state) {
+        userStates.set(address, { ...state, active: false });
+      }
+    }
+
     return NextResponse.json({ success: true, message: 'Agent stopped' });
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
