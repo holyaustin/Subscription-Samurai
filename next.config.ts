@@ -3,6 +3,7 @@ import path from "path";
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
+  // Tell Next.js not to bundle these — leave as external require() calls
   serverExternalPackages: [
     '@tetherto/wdk',
     '@tetherto/wdk-wallet-evm',
@@ -11,12 +12,13 @@ const nextConfig: NextConfig = {
   ],
   webpack: (config, { isServer }) => {
     if (isServer) {
-      // At bundle time, redirect sodium packages to our pure-JS stubs.
-      // This handles both direct imports and transitive requires.
+      // Redirect both sodium packages to our pure-JS stubs at bundle time.
+      // This works even when serverExternalPackages doesn't fully prevent
+      // the bundler from touching transitive deps.
       config.resolve.alias = {
         ...config.resolve.alias,
-        'sodium-native':    path.resolve('./mocks/sodium-native-pkg/index.js'),
-        'sodium-universal': path.resolve('./mocks/sodium-universal-pkg/index.js'),
+        'sodium-native':    path.resolve(__dirname, 'mocks/sodium-native-pkg/index.js'),
+        'sodium-universal': path.resolve(__dirname, 'mocks/sodium-universal-pkg/index.js'),
       };
     }
     return config;

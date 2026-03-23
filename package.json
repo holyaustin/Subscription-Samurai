@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "eslint",
     "agent": "node agent-scripts/subscription-agent.js",
-    "agent:dev": "nodemon agent-scripts/subscription-agent.js"
+    "agent:dev": "nodemon agent-scripts/subscription-agent.js",
+    "postinstall": "node scripts/patch-sodium.js"
   },
   "dependencies": {
     "@tetherto/wdk": "^1.0.0-beta.6",
@@ -32,9 +33,5 @@
     "eslint-config-next": "16.2.1-canary.2",
     "tailwindcss": "^4",
     "typescript": "^5"
-  },
-  "overrides": {
-    "sodium-native": "file:./mocks/sodium-native-pkg",
-    "sodium-universal": "file:./mocks/sodium-universal-pkg"
   }
 }
