@@ -1,67 +1,32 @@
 /**
  * GET /api/agent/cron
  *
- * Called by Vercel Cron every minute (configured in vercel.json).
- * Also callable manually at http://localhost:3000/api/agent/cron
- *
- * Only processes payments when agent is marked active via POST /api/agent/start.
- * Stops processing when DELETE /api/agent/start is called.
- *
- * Vercel Cron docs: https://vercel.com/docs/cron-jobs
+ * Called by cron-job.org (free) every minute.
+ * Setup: https://cron-job.org → URL: https://your-app.vercel.app/api/agent/cron?secret=YOUR_CRON_SECRET
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { promises as fs } from 'fs';
-import path from 'path';
 import WDK from '@tetherto/wdk';
 import WalletManagerEvm from '@tetherto/wdk-wallet-evm';
-
-interface Subscription {
-  recipient: string;
-  amount: number;
-  frequency: string;
-  active: boolean;
-  lastPayment: string | null;
-}
-
-const DATA_DIR     = path.join(process.cwd(), 'data');
-const HISTORY_FILE = path.join(DATA_DIR, 'history.json');
-const CONFIG_FILE  = path.join(DATA_DIR, 'subscriptions.json');
-const STATE_FILE   = path.join(DATA_DIR, 'agent-state.json');
+import {
+  isAgentActive,
+  getSubscriptions,
+  updateSubscription,
+  addTransaction,
+  type Subscription,
+} from '@/app/lib/store';
 
 const USDT_ADDRESS  = process.env.USDT_CONTRACT_ADDRESS || '0xd077a400968890eacc75cdc901f0356c943e4fdb';
 const USDT_DECIMALS = parseInt(process.env.USDT_DECIMALS || '6', 10);
 
-async function ensureDataDir() {
-  await fs.mkdir(DATA_DIR, { recursive: true });
-}
-
-async function isAgentActive(): Promise<boolean> {
-  try {
-    const state = JSON.parse(await fs.readFile(STATE_FILE, 'utf8'));
-    return state.active === true;
-  } catch {
-    return false;
-  }
-}
-
-async function loadSubscriptions(): Promise<{ subscriptions: Subscription[] }> {
-  try {
-    return JSON.parse(await fs.readFile(CONFIG_FILE, 'utf8'));
-  } catch {
-    return { subscriptions: [] };
-  }
-}
-
-async function saveSubscriptions(subscriptions: Subscription[]) {
-  await fs.writeFile(CONFIG_FILE, JSON.stringify({ subscriptions }, null, 2));
-}
-
-async function saveTransaction(tx: Record<string, unknown>) {
-  let history: { transactions: unknown[] } = { transactions: [] };
-  try { history = JSON.parse(await fs.readFile(HISTORY_FILE, 'utf8')); } catch { /* first run */ }
-  history.transactions.unshift(tx);
-  await fs.writeFile(HISTORY_FILE, JSON.stringify(history, null, 2));
+function isAuthorized(request: NextRequest): boolean {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return true;
+  const querySecret = request.nextUrl.searchParams.get('secret');
+  if (querySecret === secret) return true;
+  const authHeader = request.headers.get('authorization');
+  if (authHeader === `Bearer ${secret}`) return true;
+  return false;
 }
 
 function getNextDueDate(lastPaymentDate: Date, frequency: string): Date {
@@ -82,21 +47,14 @@ function getNextDueDate(lastPaymentDate: Date, frequency: string): Date {
 }
 
 export async function GET(request: NextRequest) {
-  // Verify Vercel Cron secret (skipped locally if CRON_SECRET not set)
-  if (process.env.CRON_SECRET) {
-    const authHeader = request.headers.get('authorization');
-    if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+  if (!isAuthorized(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  await ensureDataDir();
-
-  const active = await isAgentActive();
-  if (!active) {
+  if (!isAgentActive()) {
     return NextResponse.json({
       success: true,
-      message: 'Agent is stopped — start it from the UI first.',
+      message: 'Agent is stopped. Start it from the UI first.',
     });
   }
 
@@ -120,16 +78,17 @@ export async function GET(request: NextRequest) {
 
     const account = await wdkInstance.getAccount('ethereum', 0);
 
+    // Get current USDT balance
     let usdtBal = 0;
     try {
       const usdtUnits: bigint = await account.getTokenBalance(USDT_ADDRESS);
       usdtBal = Number(usdtUnits) / Math.pow(10, USDT_DECIMALS);
     } catch { /* non-fatal */ }
 
-    const { subscriptions } = await loadSubscriptions();
+    const subscriptions = getSubscriptions();
 
-    // Sequential processing — prevents nonce collisions between transfers
-    for (const sub of subscriptions) {
+    for (let i = 0; i < subscriptions.length; i++) {
+      const sub = subscriptions[i];
       if (!sub.active) continue;
 
       const now         = new Date();
@@ -142,14 +101,20 @@ export async function GET(request: NextRequest) {
       }
 
       if (usdtBal < sub.amount) {
-        await saveTransaction({ type: 'failed', recipient: sub.recipient, amount: sub.amount, frequency: sub.frequency, reason: 'insufficient_balance', timestamp: now.toISOString() });
+        addTransaction({
+          type: 'failed',
+          recipient: sub.recipient,
+          amount: sub.amount,
+          frequency: sub.frequency,
+          reason: 'insufficient_balance',
+          timestamp: now.toISOString(),
+        });
         results.errors.push({ recipient: sub.recipient, reason: 'insufficient_balance' });
         continue;
       }
 
-      // Save lastPayment BEFORE sending to prevent double-fire on retry
-      sub.lastPayment = now.toISOString();
-      await saveSubscriptions(subscriptions);
+      // Mark paid BEFORE sending to prevent double-fire
+      updateSubscription(i, { lastPayment: now.toISOString() });
 
       try {
         const amountUnits = BigInt(Math.round(sub.amount * Math.pow(10, USDT_DECIMALS)));
@@ -161,16 +126,31 @@ export async function GET(request: NextRequest) {
 
         usdtBal -= sub.amount;
 
-        await saveTransaction({ type: 'success', txId: result.hash, recipient: sub.recipient, amount: sub.amount, frequency: sub.frequency, feeWei: result.fee.toString(), timestamp: now.toISOString() });
+        addTransaction({
+          type: 'success',
+          txId: result.hash,
+          recipient: sub.recipient,
+          amount: sub.amount,
+          frequency: sub.frequency,
+          feeWei: result.fee.toString(),
+          timestamp: now.toISOString(),
+        });
+
         results.processed.push({ recipient: sub.recipient, amount: sub.amount, txId: result.hash });
 
       } catch (err) {
         // Revert lastPayment so it retries next cron run
-        sub.lastPayment = null;
-        await saveSubscriptions(subscriptions);
+        updateSubscription(i, { lastPayment: sub.lastPayment });
 
         const msg = err instanceof Error ? err.message : String(err);
-        await saveTransaction({ type: 'error', recipient: sub.recipient, amount: sub.amount, frequency: sub.frequency, error: msg, timestamp: now.toISOString() });
+        addTransaction({
+          type: 'error',
+          recipient: sub.recipient,
+          amount: sub.amount,
+          frequency: sub.frequency,
+          error: msg,
+          timestamp: now.toISOString(),
+        });
         results.errors.push({ recipient: sub.recipient, error: msg });
       }
     }
