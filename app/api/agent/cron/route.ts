@@ -1,232 +1,201 @@
 import { NextRequest, NextResponse } from 'next/server';
 import WDK from '@tetherto/wdk';
 import WalletManagerEvm from '@tetherto/wdk-wallet-evm';
-import { userStates, addTransaction, getTransactionStats, type UserAgentState, type Subscription } from '@/app/lib/agentStore';
+import { userStates, addTransaction, getTransactionStats, type UserAgentState } from '@/app/lib/agentStore';
 
-// USDT Contract Address on Sepolia
-const USDT_ADDRESS = process.env.USDT_CONTRACT_ADDRESS || '0xd077a400968890eacc75cdc901f0356c943e4fdb';
+const USDT_ADDRESS  = process.env.USDT_CONTRACT_ADDRESS || '0xd077a400968890eacc75cdc901f0356c943e4fdb';
 const USDT_DECIMALS = parseInt(process.env.USDT_DECIMALS || '6', 10);
 
-// ERC-20 ABI for transfer function
-const ERC20_ABI = [
-  {
-    "constant": false,
-    "inputs": [
-      { "name": "_to", "type": "address" },
-      { "name": "_value", "type": "uint256" }
-    ],
-    "name": "transfer",
-    "outputs": [{ "name": "", "type": "bool" }],
-    "type": "function"
-  }
-];
+// ── Balance helpers ───────────────────────────────────────────────────────────
 
-// Helper to get USDT balance using the same method as the working balance route
+async function getETHBalance(account: any): Promise<number> {
+  const wei: bigint = await account.getBalance();
+  return Number(wei) / 1e18;
+}
+
 async function getUSDTBalance(account: any): Promise<number> {
   try {
     const units: bigint = await account.getTokenBalance(USDT_ADDRESS);
-    const balance = Number(units) / Math.pow(10, USDT_DECIMALS);
-    return balance;
-  } catch (error) {
-    console.error('Failed to get USDT balance:', error);
+    return Number(units) / Math.pow(10, USDT_DECIMALS);
+  } catch {
     return 0;
   }
 }
 
-// Helper to send USDT
-async function sendUSDT(account: any, toAddress: string, amount: number): Promise<any> {
-  // USDT has 6 decimals
-  const amountWithDecimals = BigInt(Math.floor(amount * Math.pow(10, USDT_DECIMALS)));
-  
-  // Get the contract interface
-  const contract = account.getContract(USDT_ADDRESS, ERC20_ABI);
-  
-  // Call transfer function on USDT contract
-  const tx = await contract.transfer(toAddress, amountWithDecimals);
-  
-  return tx;
+// ── Send USDT using correct WDK API ──────────────────────────────────────────
+
+/**
+ * WDK docs: account.transfer({ token, recipient, amount: bigint })
+ * → { hash: string, fee: bigint }
+ *
+ * USDT has 6 decimals: 1 USDT = 1_000_000 base units
+ * account.getContract() does NOT exist in WDK — that was the bug.
+ */
+async function sendUSDT(account: any, toAddress: string, amount: number) {
+  const amountUnits = BigInt(Math.round(amount * Math.pow(10, USDT_DECIMALS)));
+
+  const result = await account.transfer({
+    token: USDT_ADDRESS,
+    recipient: toAddress,
+    amount: amountUnits,
+  });
+
+  return result; // { hash: string, fee: bigint }
 }
 
-// Helper to get native ETH balance
-async function getETHBalance(account: any): Promise<number> {
-  const balanceWei = await account.getBalance();
-  return Number(balanceWei) / 1e18;
+// ── Frequency → next due date ─────────────────────────────────────────────────
+
+function getNextDueDate(lastPayment: Date, frequency: string): Date {
+  const next = new Date(lastPayment);
+  switch (frequency) {
+    case 'every_minute':     next.setMinutes(next.getMinutes() + 1);   break;
+    case 'every_5_minutes':  next.setMinutes(next.getMinutes() + 5);   break;
+    case 'every_10_minutes': next.setMinutes(next.getMinutes() + 10);  break;
+    case 'every_30_minutes': next.setMinutes(next.getMinutes() + 30);  break;
+    case 'hourly':           next.setHours(next.getHours() + 1);       break;
+    case 'daily':            next.setDate(next.getDate() + 1);         break;
+    case 'weekly':           next.setDate(next.getDate() + 7);         break;
+    case 'monthly':          next.setMonth(next.getMonth() + 1);       break;
+    case 'yearly':           next.setFullYear(next.getFullYear() + 1); break;
+    default:                 next.setDate(next.getDate() + 1);
+  }
+  return next;
 }
 
-// Helper to process a single user's subscriptions
+// ── Process one user's subscriptions ─────────────────────────────────────────
+
 async function processUserSubscriptions(state: UserAgentState) {
   const { address, mnemonic, subscriptions } = state;
-  const now = new Date();
+  const now     = new Date();
   const results = [];
 
-  // Initialize WDK for this user
   const provider = process.env.RPC_URL || 'https://ethereum-sepolia-public.nodies.app';
   const wdk = new WDK(mnemonic).registerWallet('ethereum', WalletManagerEvm, { provider });
   const account = await wdk.getAccount('ethereum', 0);
-  
-  // Get both ETH and USDT balances using the correct methods
-  const ethBalance = await getETHBalance(account);
+
+  const ethBalance  = await getETHBalance(account);
   const usdtBalance = await getUSDTBalance(account);
-  
-  console.log(`🔍 Processing ${subscriptions.length} subscriptions for ${address}`);
-  console.log(`   ETH Balance: ${ethBalance.toFixed(4)} ETH`);
-  console.log(`   USDT Balance: ${usdtBalance.toFixed(USDT_DECIMALS)} USDT`);
+
+  console.log(`🔍 ${address} | ETH: ${ethBalance.toFixed(4)} | USDT: ${usdtBalance.toFixed(2)}`);
 
   for (const sub of subscriptions) {
-    if (!sub.active) {
-      console.log(`⏸️ Skipping inactive subscription for ${sub.recipient}`);
+    if (!sub.active) continue;
+
+    // Determine if payment is due
+    const lastPayment = sub.lastPayment ? new Date(sub.lastPayment) : new Date(0);
+    const nextDue     = getNextDueDate(lastPayment, sub.frequency);
+
+    if (now < nextDue) {
+      const secsLeft = Math.round((nextDue.getTime() - now.getTime()) / 1000);
+      console.log(`⏳ ${sub.recipient.slice(0, 8)}… — ${secsLeft}s until due`);
       continue;
     }
 
-    const lastPayment = sub.lastPayment ? new Date(sub.lastPayment) : null;
-    let shouldPay = false;
+    console.log(`📅 Payment due: ${sub.amount} USDT → ${sub.recipient}`);
 
-    // Check if payment is due
-    if (!lastPayment) {
-      shouldPay = true;
-      console.log(`📅 First time payment due for ${sub.recipient}`);
-    } else {
-      const daysSinceLast = (now.getTime() - lastPayment.getTime()) / (1000 * 60 * 60 * 24);
-      switch (sub.frequency) {
-        case 'daily':
-          shouldPay = daysSinceLast >= 1;
-          break;
-        case 'weekly':
-          shouldPay = daysSinceLast >= 7;
-          break;
-        case 'monthly':
-          shouldPay = daysSinceLast >= 30;
-          break;
-      }
-      if (shouldPay) {
-        console.log(`📅 Payment due for ${sub.recipient} (${daysSinceLast.toFixed(1)} days since last)`);
-      }
+    // Insufficient USDT check
+    if (usdtBalance < sub.amount) {
+      console.log(`❌ Insufficient USDT: have ${usdtBalance.toFixed(2)}, need ${sub.amount}`);
+      addTransaction({
+        type: 'failed',
+        recipient: sub.recipient,
+        amount: sub.amount,
+        frequency: sub.frequency,
+        reason: `Insufficient USDT: ${usdtBalance.toFixed(2)} < ${sub.amount}`,
+        timestamp: now.toISOString(),
+      });
+      results.push({ sub, success: false, reason: 'insufficient_balance' });
+      continue;
     }
 
-    if (shouldPay) {
-      // Check if sufficient USDT balance
-      if (usdtBalance < sub.amount) {
-        console.log(`❌ Insufficient USDT balance for ${sub.recipient}: ${usdtBalance.toFixed(USDT_DECIMALS)} < ${sub.amount}`);
-        
-        // Record FAILED transaction
-        addTransaction({
-          type: 'failed',
-          recipient: sub.recipient,
-          amount: sub.amount,
-          frequency: sub.frequency,
-          reason: `Insufficient USDT balance: ${usdtBalance.toFixed(USDT_DECIMALS)} USDT < ${sub.amount} USDT `,
-          timestamp: now.toISOString()
-        });
-        results.push({ sub, success: false, reason: 'insufficient USDT balance' });
-        continue;
-      }
+    // Mark paid BEFORE sending (prevents double-fire if cron overlaps)
+    sub.lastPayment = now.toISOString();
 
-      /** // Also check if user has enough ETH for gas
-      if (ethBalance < 0.001) {
-        console.log(`⚠️ Low ETH balance for gas: ${ethBalance.toFixed(4)} ETH`);
-        addTransaction({
-          type: 'failed',
-          recipient: sub.recipient,
-          amount: sub.amount,
-          frequency: sub.frequency,
-          reason: `Low ETH balance for gas: ${ethBalance.toFixed(4)} ETH (needs at least 0.001 ETH)`,
-          timestamp: now.toISOString()
-        });
-        results.push({ sub, success: false, reason: 'low ETH for gas' });
-        continue;
-      }
-      */
-      try {
-        console.log(`💸 Sending ${sub.amount} USDT to ${sub.recipient}...`);
-        
-        // Send USDT (ERC-20 token)
-        const tx = await sendUSDT(account, sub.recipient, sub.amount);
-        
-        console.log(`✅ USDT Transaction sent: ${tx.hash}`);
-        
-        // Record SUCCESS transaction
-        addTransaction({
-          type: 'success',
-          txId: tx.hash,
-          recipient: sub.recipient,
-          amount: sub.amount,
-          frequency: sub.frequency,
-          timestamp: now.toISOString()
-        });
-        
-        // Update last payment date
-        sub.lastPayment = now.toISOString();
-        results.push({ sub, success: true, txHash: tx.hash });
-        
-      } catch (error) {
-        // Record ERROR transaction
-        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-        console.error(`❌ Payment failed for ${sub.recipient}:`, errorMsg);
-        
-        addTransaction({
-          type: 'error',
-          recipient: sub.recipient,
-          amount: sub.amount,
-          frequency: sub.frequency,
-          error: errorMsg,
-          timestamp: now.toISOString()
-        });
-        results.push({ sub, success: false, error: errorMsg });
-      }
+    try {
+      // ✅ Correct WDK API — account.transfer(), NOT account.getContract()
+      const tx = await sendUSDT(account, sub.recipient, sub.amount);
+
+      console.log(`✅ TX: ${tx.hash} | fee: ${Number(tx.fee) / 1e18} ETH`);
+
+      addTransaction({
+        type: 'success',
+        txId: tx.hash,
+        recipient: sub.recipient,
+        amount: sub.amount,
+        frequency: sub.frequency,
+        feeWei: tx.fee.toString(),
+        timestamp: now.toISOString(),
+      });
+
+      results.push({ sub, success: true, txHash: tx.hash });
+
+    } catch (error) {
+      // Revert lastPayment so it retries next cycle
+      sub.lastPayment = lastPayment.getTime() === 0 ? null : lastPayment.toISOString();
+
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      console.error(`❌ Payment failed for ${sub.recipient}:`, errorMsg);
+
+      addTransaction({
+        type: 'error',
+        recipient: sub.recipient,
+        amount: sub.amount,
+        frequency: sub.frequency,
+        error: errorMsg,
+        timestamp: now.toISOString(),
+      });
+
+      results.push({ sub, success: false, error: errorMsg });
     }
   }
 
-  return { 
-    address, 
-    results, 
-    processedAt: now.toISOString(), 
-    balances: {
-      eth: ethBalance,
-      usdt: usdtBalance
-    }
+  return {
+    address,
+    results,
+    processedAt: now.toISOString(),
+    balances: { eth: ethBalance, usdt: usdtBalance },
   };
 }
 
+// ── Cron handler ──────────────────────────────────────────────────────────────
+
 export async function GET(request: NextRequest) {
   try {
-    console.log('🕐 Cron job triggered at:', new Date().toISOString());
-    
-    // Verify secret (add CRON_SECRET to your .env.local)
-    const { searchParams } = new URL(request.url);
-    const secret = searchParams.get('secret');
-    const expectedSecret = process.env.CRON_SECRET;
-    
-    if (expectedSecret && secret !== expectedSecret) {
-      console.warn('⚠️ Unauthorized cron attempt');
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    console.log('🕐 Cron triggered:', new Date().toISOString());
+
+    // Auth check
+    const secret = process.env.CRON_SECRET;
+    if (secret) {
+      const provided = request.nextUrl.searchParams.get('secret')
+        ?? request.headers.get('authorization')?.replace('Bearer ', '');
+      if (provided !== secret) {
+        return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      }
     }
 
     const results = [];
     let activeUsers = 0;
-    let totalSubscriptionsProcessed = 0;
-    
-    // Process all active users
+    let totalSubs   = 0;
+
     for (const [address, state] of userStates.entries()) {
-      if (state.active) {
-        activeUsers++;
-        totalSubscriptionsProcessed += state.subscriptions.length;
-        console.log(`👤 Processing user: ${address} (${state.subscriptions.length} subscriptions, started at ${state.startedAt})`);
-        const result = await processUserSubscriptions(state);
-        results.push(result);
-      }
+      if (!state.active) continue;
+      activeUsers++;
+      totalSubs += state.subscriptions.length;
+      console.log(`👤 ${address} (${state.subscriptions.length} subs)`);
+      results.push(await processUserSubscriptions(state));
     }
-    
-    console.log(`✅ Cron completed: Processed ${activeUsers} active users, ${totalSubscriptionsProcessed} subscriptions checked`);
-    
-    // Get transaction stats for response
+
+    console.log(`✅ Done: ${activeUsers} users, ${totalSubs} subscriptions checked`);
+
     const stats = getTransactionStats();
-    
+
     return NextResponse.json({
       success: true,
-      message: `Processed ${activeUsers} active users, ${totalSubscriptionsProcessed} subscriptions`,
+      message: `Processed ${activeUsers} active users, ${totalSubs} subscriptions`,
       stats,
-      results
+      results,
     });
+
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
     console.error('❌ Cron error:', msg);
