@@ -9,7 +9,9 @@
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 ---
-https://subscription-samurai.vercel.app/
+Link: https://subscription-samurai.vercel.app/
+
+Video Demo: https://youtu.be/rV_CHSJjknM
 
 
 
@@ -211,7 +213,7 @@ The agent uses cron syntax for scheduling:
 ### 3. **Add Subscriptions**
 - Enter recipient address (Ethereum format)
 - Set payment amount (USDT)
-- Choose frequency (Daily/Weekly/Monthly)
+- Choose frequency (Minute/Hour/Daily/Weekly/Monthly/Yearly)
 - Click "Add Subscription"
 
 ### 4. **Start the Agent**
@@ -356,7 +358,7 @@ This project leverages the Tether Wallet Development Kit for all blockchain oper
 
 ---
 
-## 🎬 Demo Guide https://youtu.be/L4SrdfHd0H0
+## 🎬 Demo Guide https://youtu.be/rV_CHSJjknM
 
 
 ---
